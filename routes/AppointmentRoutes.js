@@ -1,9 +1,5 @@
 import { Router } from 'express';
-import {
-  bookAppointment,
-  searchMyAppointments,
-} from '../controllers/appointmentsController.js';
-
+import { bookAppointment, searchMyAppointments } from '../controllers/AppointmentsController.js';
 const router = Router();
 
 // IMPORTANT: /search must come BEFORE any /:id route to avoid being

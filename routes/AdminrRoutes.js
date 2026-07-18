@@ -1,13 +1,13 @@
 import { Router } from 'express';
-import { login, getMe, changePassword } from '../controllers/adminAuthController.js';
-import { getDashboardStats } from '../controllers/adminDashboardController.js';
+import { login, getMe, changePassword } from '../controllers/AdminAuthController.js';
+import { getDashboardStats } from '../controllers/AdminDashboardController.js';
 import {
   getAllAppointments,
   getAppointmentById,
   updateAppointmentStatus,
   updateAppointment,
   deleteAppointment,
-} from '../controllers/adminAppointmentsController.js';
+} from '../controllers/AdminAppointmentsController.js';
 import {
   getAllDoctors,
   getDoctorById,
