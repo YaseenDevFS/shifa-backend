@@ -9,7 +9,7 @@ import {
   logout,
   getAllUsers
 } from '../controllers/authController.js';
-import { protect, restrictTo } from '../middleware/auth.js';
+import { protect, restrictTo } from '../middlewares/auth.js';
 
 const router = express.Router();
 
