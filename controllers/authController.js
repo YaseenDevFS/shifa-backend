@@ -1,80 +1,94 @@
+// controllers/authController.js
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import db from '../config/db.js';
+import bcrypt from 'bcryptjs';
 
-// إنشاء توكن JWT
-const signToken = (userId) => {
-  return jwt.sign(
-    { id: userId },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-  );
-};
-
-// إرسال الرد مع التوكن
-const sendTokenResponse = (user, statusCode, res) => {
-  const token = signToken(user.id);
-  
-  // إزالة كلمة المرور من الرد
-  const userData = { ...user };
-  delete userData.password_hash;
-
-  res.status(statusCode).json({
-    status: 'success',
-    token,
-    data: {
-      user: userData
-    }
-  });
-};
-
-// ============================================
-// تسجيل الدخول
-// ============================================
+// ══════════════════════════════════════════════════════════════════════════════
+//  تسجيل الدخول
+// ══════════════════════════════════════════════════════════════════════════════
 export const login = async (req, res) => {
   try {
+    console.log('📝 Login attempt:', req.body.email);
+
     const { email, password } = req.body;
 
-    // التحقق من وجود البريد وكلمة المرور
+    // 1. التحقق من وجود البيانات
     if (!email || !password) {
+      console.log('❌ Missing email or password');
       return res.status(400).json({
         status: 'fail',
         message: 'يرجى إدخال البريد الإلكتروني وكلمة المرور'
       });
     }
 
-    // البحث عن المستخدم
-    const user = await User.findByEmail(email);
-    
-    if (!user) {
+    // 2. البحث عن المستخدم
+    const result = await db.query(
+      'SELECT * FROM users WHERE email = $1',
+      [email.toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      console.log('❌ User not found:', email);
       return res.status(401).json({
         status: 'fail',
-        message: 'بريد إلكتروني أو كلمة مرور غير صحيحة'
+        message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة'
       });
     }
 
-    // التحقق من أن الحساب نشط
+    const user = result.rows[0];
+    console.log('✅ User found:', user.email);
+
+    // 3. التحقق من كلمة المرور
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    
+    if (!isPasswordValid) {
+      console.log('❌ Invalid password for:', email);
+      return res.status(401).json({
+        status: 'fail',
+        message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة'
+      });
+    }
+
+    // 4. التحقق من أن الحساب نشط
     if (!user.is_active) {
+      console.log('❌ Inactive account:', email);
       return res.status(401).json({
         status: 'fail',
         message: 'الحساب غير نشط. يرجى التواصل مع الدعم.'
       });
     }
 
-    // التحقق من كلمة المرور
-    const isPasswordValid = await User.verifyPassword(user, password);
-    
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'بريد إلكتروني أو كلمة مرور غير صحيحة'
-      });
-    }
+    // 5. إنشاء التوكن
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
 
-    // تحديث آخر تسجيل دخول
-    await User.updateLastLogin(user.id);
+    console.log('✅ Login successful:', email);
 
-    // إرسال الرد
-    sendTokenResponse(user, 200, res);
+    // 6. تحديث آخر تسجيل دخول
+    await db.query(
+      'UPDATE users SET last_login = NOW() WHERE id = $1',
+      [user.id]
+    );
+
+    // 7. إرسال الرد
+    res.status(200).json({
+      status: 'success',
+      token,
+      data: {
+        user: {
+          id: user.id,
+          full_name: user.full_name,
+          email: user.email,
+          role: user.role,
+          avatar_url: user.avatar_url,
+          is_active: user.is_active
+        }
+      }
+    });
+
   } catch (error) {
     console.error('❌ Login error:', error);
     return res.status(500).json({
@@ -84,48 +98,62 @@ export const login = async (req, res) => {
   }
 };
 
-// ============================================
-// تسجيل مستخدم جديد
-// ============================================
+// ══════════════════════════════════════════════════════════════════════════════
+//  تسجيل مستخدم جديد
+// ══════════════════════════════════════════════════════════════════════════════
 export const register = async (req, res) => {
   try {
-    const { full_name, email, password, phone, role = 'user' } = req.body;
+    const { full_name, email, password, phone } = req.body;
 
-    // التحقق من وجود البيانات المطلوبة
     if (!full_name || !email || !password) {
       return res.status(400).json({
         status: 'fail',
-        message: 'الاسم الكامل، البريد الإلكتروني وكلمة المرور مطلوبة'
+        message: 'الاسم والبريد الإلكتروني وكلمة المرور مطلوبة'
       });
     }
 
-    // التحقق من قوة كلمة المرور
-    if (password.length < 6) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'
-      });
-    }
+    // التحقق من وجود المستخدم
+    const existingUser = await db.query(
+      'SELECT id FROM users WHERE email = $1',
+      [email.toLowerCase()]
+    );
 
-    // التحقق من أن البريد غير مستخدم
-    const existingUser = await User.findByEmail(email);
-    if (existingUser) {
+    if (existingUser.rows.length > 0) {
       return res.status(400).json({
         status: 'fail',
         message: 'البريد الإلكتروني مستخدم بالفعل'
       });
     }
 
+    // تشفير كلمة المرور
+    const salt = await bcrypt.genSalt(12);
+    const password_hash = await bcrypt.hash(password, salt);
+
     // إنشاء المستخدم
-    const newUser = await User.create({
-      full_name,
-      email,
-      password,
-      role,
-      phone
+    const result = await db.query(
+      `INSERT INTO users (full_name, email, password_hash, phone, role, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, full_name, email, role, phone, is_active, created_at`,
+      [full_name, email.toLowerCase(), password_hash, phone || null, 'user', true]
+    );
+
+    const user = result.rows[0];
+
+    // إنشاء التوكن
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    res.status(201).json({
+      status: 'success',
+      token,
+      data: {
+        user
+      }
     });
 
-    sendTokenResponse(newUser, 201, res);
   } catch (error) {
     console.error('❌ Register error:', error);
     return res.status(500).json({
@@ -135,14 +163,24 @@ export const register = async (req, res) => {
   }
 };
 
-// ============================================
-// الحصول على بيانات المستخدم الحالي
-// ============================================
+// ══════════════════════════════════════════════════════════════════════════════
+//  الحصول على بيانات المستخدم الحالي
+// ══════════════════════════════════════════════════════════════════════════════
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    
-    if (!user) {
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'fail',
+        message: 'غير مصرح'
+      });
+    }
+
+    const result = await db.query(
+      'SELECT id, full_name, email, role, phone, avatar_url, is_active, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
       return res.status(404).json({
         status: 'fail',
         message: 'المستخدم غير موجود'
@@ -151,8 +189,11 @@ export const getMe = async (req, res) => {
 
     res.status(200).json({
       status: 'success',
-      data: { user }
+      data: {
+        user: result.rows[0]
+      }
     });
+
   } catch (error) {
     console.error('❌ GetMe error:', error);
     return res.status(500).json({
@@ -162,36 +203,13 @@ export const getMe = async (req, res) => {
   }
 };
 
-// ============================================
-// تحديث بيانات المستخدم
-// ============================================
-export const updateProfile = async (req, res) => {
-  try {
-    const { full_name, phone, avatar_url } = req.body;
-    
-    const updatedUser = await User.update(req.user.id, {
-      full_name,
-      phone,
-      avatar_url
-    });
-
-    res.status(200).json({
-      status: 'success',
-      message: 'تم تحديث البيانات بنجاح',
-      data: { user: updatedUser }
-    });
-  } catch (error) {
-    console.error('❌ UpdateProfile error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'خطأ في السيرفر'
-    });
-  }
+export const logout = (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'تم تسجيل الخروج بنجاح'
+  });
 };
 
-// ============================================
-// تغيير كلمة المرور
-// ============================================
 export const changePassword = async (req, res) => {
   try {
     const { current_password, new_password } = req.body;
@@ -210,12 +228,25 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    // الحصول على المستخدم مع كلمة المرور
-    const user = await User.findByEmail(req.user.email);
-    
+    // الحصول على المستخدم
+    const result = await db.query(
+      'SELECT password_hash FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'المستخدم غير موجود'
+      });
+    }
+
     // التحقق من كلمة المرور الحالية
-    const isPasswordValid = await User.verifyPassword(user, current_password);
-    
+    const isPasswordValid = await bcrypt.compare(
+      current_password,
+      result.rows[0].password_hash
+    );
+
     if (!isPasswordValid) {
       return res.status(401).json({
         status: 'fail',
@@ -223,13 +254,21 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    // تغيير كلمة المرور
-    await User.changePassword(req.user.id, new_password);
+    // تشفير كلمة المرور الجديدة
+    const salt = await bcrypt.genSalt(12);
+    const password_hash = await bcrypt.hash(new_password, salt);
+
+    // تحديث كلمة المرور
+    await db.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [password_hash, req.user.id]
+    );
 
     res.status(200).json({
       status: 'success',
       message: 'تم تغيير كلمة المرور بنجاح'
     });
+
   } catch (error) {
     console.error('❌ ChangePassword error:', error);
     return res.status(500).json({
@@ -239,30 +278,58 @@ export const changePassword = async (req, res) => {
   }
 };
 
-// ============================================
-// تسجيل الخروج
-// ============================================
-export const logout = (req, res) => {
-  res.status(200).json({
-    status: 'success',
-    message: 'تم تسجيل الخروج بنجاح'
-  });
+export const updateProfile = async (req, res) => {
+  try {
+    const { full_name, phone, avatar_url } = req.body;
+
+    const result = await db.query(
+      `UPDATE users 
+       SET full_name = COALESCE($1, full_name),
+           phone = COALESCE($2, phone),
+           avatar_url = COALESCE($3, avatar_url),
+           updated_at = NOW()
+       WHERE id = $4
+       RETURNING id, full_name, email, role, phone, avatar_url, is_active`,
+      [full_name, phone, avatar_url, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'المستخدم غير موجود'
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        user: result.rows[0]
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ UpdateProfile error:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'خطأ في السيرفر'
+    });
+  }
 };
 
-// ============================================
-// الحصول على جميع المستخدمين (للمدير فقط)
-// ============================================
 export const getAllUsers = async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, full_name, email, role, phone, is_active, last_login, created_at FROM users ORDER BY created_at DESC'
+      'SELECT id, full_name, email, role, phone, is_active, created_at FROM users ORDER BY created_at DESC'
     );
-    
+
     res.status(200).json({
       status: 'success',
       results: result.rows.length,
-      data: { users: result.rows }
+      data: {
+        users: result.rows
+      }
     });
+
   } catch (error) {
     console.error('❌ GetAllUsers error:', error);
     return res.status(500).json({

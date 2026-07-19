@@ -1,3 +1,4 @@
+// routes/authRoutes.js
 import express from 'express';
 import {
   login,
@@ -8,23 +9,23 @@ import {
   logout,
   getAllUsers
 } from '../controllers/authController.js';
-import { protect, restrictTo, isAdmin } from '../middlewares/auth.js';
+import { protect, restrictTo } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// مسارات عامة
+// ── مسارات عامة ──
 router.post('/login', login);
 router.post('/register', register);
 router.post('/logout', logout);
 
-// مسارات محمية (تتطلب تسجيل دخول)
-router.use(protect); // جميع المسارات التالية تتطلب مصادقة
+// ── مسارات محمية ──
+router.use(protect);
 
 router.get('/me', getMe);
 router.put('/profile', updateProfile);
 router.post('/change-password', changePassword);
 
-// مسارات المدير فقط
+// ── مسارات المدير فقط ──
 router.get('/users', restrictTo('admin', 'super_admin'), getAllUsers);
 
 export default router;
