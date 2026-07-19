@@ -12,28 +12,9 @@ dotenv.config();
 
 const app = express();
 
-// CORS configuration
-const allowedOrigins = [
-  process.env.CLIENT_URL || 'http://localhost:3000',
-  'https://shifa-backend-lemon.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:5173',
-];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-      callback(null, true);
-    } else {
-      console.log('Blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+
+app.use(cors());
 
 app.use(express.json({ limit: '10mb' }));
 
