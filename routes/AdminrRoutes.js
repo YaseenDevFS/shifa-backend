@@ -27,37 +27,48 @@ import { getSiteLogo, updateSiteLogo } from '../controllers/adminSettingsControl
 
 const router = Router();
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+//  PUBLIC ROUTES (No authentication required)
+// ══════════════════════════════════════════════════════════════════════════════
 router.post('/auth/login', login);
-router.get('/auth/me', protect, getMe);
-router.post('/auth/change-password', protect, changePassword);
 
-// ── Dashboard ─────────────────────────────────────────────────────────────────
-router.get('/dashboard/stats', protect, getDashboardStats);
-
-// ── Settings ─────────────────────────────────────────────────────────────────
+// ── Settings (public for logo) ──
 router.get('/settings/logo', getSiteLogo);
-router.put('/settings/logo', protect, updateSiteLogo);
 
-// ── Appointments ──────────────────────────────────────────────────────────────
-router.get('/appointments', protect, getAllAppointments);
-router.get('/appointments/:id', protect, getAppointmentById);
-router.patch('/appointments/:id/status', protect, updateAppointmentStatus);
-router.put('/appointments/:id', protect, updateAppointment);
-router.delete('/appointments/:id', protect, restrictTo('super_admin'), deleteAppointment);
+// ══════════════════════════════════════════════════════════════════════════════
+//  PROTECTED ROUTES (Authentication required)
+// ══════════════════════════════════════════════════════════════════════════════
+router.use(protect);
 
-// ── Doctors ───────────────────────────────────────────────────────────────────
-router.get('/doctors', protect, getAllDoctors);
-router.get('/doctors/:id', protect, getDoctorById);
-router.post('/doctors', protect, createDoctor);
-router.put('/doctors/:id', protect, updateDoctor);
-router.delete('/doctors/:id', protect, restrictTo('super_admin'), deleteDoctor);
+// ── Auth ──
+router.get('/auth/me', getMe);
+router.post('/auth/change-password', changePassword);
 
-// ── Departments ───────────────────────────────────────────────────────────────
-router.get('/departments', protect, getAllDepartments);
-router.get('/departments/:id', protect, getDepartmentById);
-router.post('/departments', protect, createDepartment);
-router.put('/departments/:id', protect, updateDepartment);
-router.delete('/departments/:id', protect, restrictTo('super_admin'), deleteDepartment);
+// ── Dashboard ──
+router.get('/dashboard/stats', getDashboardStats);
+
+// ── Settings ──
+router.put('/settings/logo', updateSiteLogo);
+
+// ── Appointments ──
+router.get('/appointments', getAllAppointments);
+router.get('/appointments/:id', getAppointmentById);
+router.patch('/appointments/:id/status', updateAppointmentStatus);
+router.put('/appointments/:id', updateAppointment);
+router.delete('/appointments/:id', restrictTo('super_admin'), deleteAppointment);
+
+// ── Doctors ──
+router.get('/doctors', getAllDoctors);
+router.get('/doctors/:id', getDoctorById);
+router.post('/doctors', createDoctor);
+router.put('/doctors/:id', updateDoctor);
+router.delete('/doctors/:id', restrictTo('super_admin'), deleteDoctor);
+
+// ── Departments ──
+router.get('/departments', getAllDepartments);
+router.get('/departments/:id', getDepartmentById);
+router.post('/departments', createDepartment);
+router.put('/departments/:id', updateDepartment);
+router.delete('/departments/:id', restrictTo('super_admin'), deleteDepartment);
 
 export default router;
