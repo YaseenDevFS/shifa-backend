@@ -3,11 +3,14 @@ import db from '../config/db.js';
 import bcrypt from 'bcryptjs';
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  ADMIN LOGIN
+//  ADMIN LOGIN - WITH FULL DEBUGGING
 // ══════════════════════════════════════════════════════════════════════════════
 export const login = async (req, res) => {
   try {
-    console.log('📝 Admin login attempt for:', req.body.email);
+    console.log('========================================');
+    console.log('📝 Admin Login Attempt');
+    console.log('📧 Email:', req.body.email);
+    console.log('🔑 Password length:', req.body.password?.length || 0);
 
     const { email, password } = req.body;
 
@@ -21,13 +24,16 @@ export const login = async (req, res) => {
     }
 
     // 2. Find admin by email
+    console.log('🔍 Looking for admin with email:', email.toLowerCase());
     const result = await db.query(
       'SELECT * FROM admins WHERE email = $1',
       [email.toLowerCase()]
     );
 
+    console.log('📊 Query result rows:', result.rows.length);
+
     if (result.rows.length === 0) {
-      console.log('❌ Admin not found:', email);
+      console.log('❌ Admin NOT found in database');
       return res.status(401).json({
         status: 'fail',
         message: 'Invalid email or password'
@@ -35,15 +41,20 @@ export const login = async (req, res) => {
     }
 
     const admin = result.rows[0];
-    console.log('✅ Admin found:', admin.email);
+    console.log('✅ Admin found in database');
+    console.log('👤 Admin ID:', admin.id);
+    console.log('👤 Admin Email:', admin.email);
+    console.log('👤 Admin Role:', admin.role);
+    console.log('👤 Admin Active:', admin.is_active);
+    console.log('🔑 Stored hash (first 30 chars):', admin.password_hash?.substring(0, 30) + '...');
 
     // 3. Check password
-    console.log('🔑 Checking password...');
+    console.log('🔐 Comparing passwords...');
     const isPasswordValid = await bcrypt.compare(password, admin.password_hash);
-    console.log('🔑 Password valid:', isPasswordValid);
+    console.log('🔐 Password match:', isPasswordValid);
 
     if (!isPasswordValid) {
-      console.log('❌ Invalid password for:', email);
+      console.log('❌ Invalid password');
       return res.status(401).json({
         status: 'fail',
         message: 'Invalid email or password'
@@ -52,7 +63,7 @@ export const login = async (req, res) => {
 
     // 4. Check if account is active
     if (!admin.is_active) {
-      console.log('❌ Inactive admin account:', email);
+      console.log('❌ Inactive admin account');
       return res.status(401).json({
         status: 'fail',
         message: 'Account is deactivated. Please contact support.'
@@ -60,17 +71,20 @@ export const login = async (req, res) => {
     }
 
     // 5. Generate JWT token
+    console.log('🔑 Generating JWT token...');
+    console.log('🔑 JWT_SECRET exists:', !!process.env.JWT_SECRET);
+    
     const token = jwt.sign(
       { 
         id: admin.id, 
         email: admin.email, 
         role: admin.role 
       },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'fallback-secret-key-change-this',
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
-    console.log('✅ Login successful for:', email);
+    console.log('✅ Token generated successfully');
 
     // 6. Update last login timestamp
     await db.query(
@@ -79,6 +93,9 @@ export const login = async (req, res) => {
     );
 
     // 7. Send response
+    console.log('✅ Login successful for:', email);
+    console.log('========================================');
+
     res.status(200).json({
       status: 'success',
       token,
@@ -96,6 +113,7 @@ export const login = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Login error:', error);
+    console.error('❌ Error stack:', error.stack);
     return res.status(500).json({
       status: 'error',
       message: 'Server error'
@@ -108,9 +126,11 @@ export const login = async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 export const getMe = async (req, res) => {
   try {
-    console.log('👤 Getting current admin:', req.admin?.email);
+    console.log('👤 Getting current admin');
+    console.log('👤 req.admin:', req.admin);
 
     if (!req.admin) {
+      console.log('❌ No admin in request');
       return res.status(401).json({
         status: 'fail',
         message: 'Not authenticated'
@@ -123,12 +143,14 @@ export const getMe = async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+      console.log('❌ Admin not found in database');
       return res.status(404).json({
         status: 'fail',
         message: 'Admin not found'
       });
     }
 
+    console.log('✅ Admin data retrieved');
     res.status(200).json({
       status: 'success',
       data: {
@@ -212,6 +234,55 @@ export const changePassword = async (req, res) => {
     return res.status(500).json({
       status: 'error',
       message: 'Server error'
+    });
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CREATE TEST ADMIN (Development Only)
+// ══════════════════════════════════════════════════════════════════════════════
+export const createTestAdmin = async (req, res) => {
+  try {
+    const { email = 'admin@shifa.com', password = 'admin123', full_name = 'Super Admin' } = req.body;
+    
+    // Hash password
+    const salt = await bcrypt.genSalt(12);
+    const password_hash = await bcrypt.hash(password, salt);
+    
+    // Check if admin exists
+    const existing = await db.query(
+      'SELECT id FROM admins WHERE email = $1',
+      [email.toLowerCase()]
+    );
+    
+    if (existing.rows.length > 0) {
+      // Update existing admin
+      await db.query(
+        'UPDATE admins SET password_hash = $1, is_active = true, updated_at = NOW() WHERE email = $2',
+        [password_hash, email.toLowerCase()]
+      );
+      return res.status(200).json({
+        status: 'success',
+        message: `Admin ${email} updated with new password`
+      });
+    }
+    
+    // Create new admin
+    await db.query(
+      `INSERT INTO admins (full_name, email, password_hash, role, is_active)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [full_name, email.toLowerCase(), password_hash, 'super_admin', true]
+    );
+    
+    res.status(201).json({
+      status: 'success',
+      message: `Admin ${email} created with password: ${password}`
+    });
+  } catch (error) {
+    console.error('❌ Create test admin error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to create test admin'
     });
   }
 };

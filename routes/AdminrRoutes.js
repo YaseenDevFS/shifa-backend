@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { login, getMe, changePassword } from '../controllers/AdminAuthController.js';
+import { 
+  login, 
+  getMe, 
+  changePassword,
+  createTestAdmin  // 🔧 Added for debugging
+} from '../controllers/AdminAuthController.js';
 import { getDashboardStats } from '../controllers/AdminDashboardController.js';
 import {
   getAllAppointments,
@@ -30,13 +35,29 @@ const router = Router();
 // ══════════════════════════════════════════════════════════════════════════════
 //  PUBLIC ROUTES (No authentication required)
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ── Auth ──
 router.post('/auth/login', login);
+
+// ── Test endpoint to create/update admin (Development only) ──
+// ⚠️ REMOVE THIS IN PRODUCTION! ⚠️
+router.post('/auth/create-test-admin', createTestAdmin);
 
 // ── Settings (public for logo) ──
 router.get('/settings/logo', getSiteLogo);
 
+// ── Health check route ──
+router.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Admin API is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  PROTECTED ROUTES (Authentication required)
+//  All routes below this line require a valid JWT token
 // ══════════════════════════════════════════════════════════════════════════════
 router.use(protect);
 
@@ -70,5 +91,15 @@ router.get('/departments/:id', getDepartmentById);
 router.post('/departments', createDepartment);
 router.put('/departments/:id', updateDepartment);
 router.delete('/departments/:id', restrictTo('super_admin'), deleteDepartment);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ERROR HANDLING FOR UNMATCHED ROUTES
+// ══════════════════════════════════════════════════════════════════════════════
+router.use((req, res) => {
+  res.status(404).json({
+    status: 'fail',
+    message: `Route ${req.originalUrl} not found on admin API`
+  });
+});
 
 export default router;

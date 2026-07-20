@@ -23,7 +23,7 @@ export const protect = async (req, res, next) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-change-this-in-production');
       console.log('✅ Token verified for:', decoded.email);
     } catch (err) {
       console.log('❌ Token verification failed:', err.name);
